@@ -33,46 +33,57 @@ def count_phrase_in_words(words, phrase_words):
             total += 1
     return total
 
-def get_video_ids():
+def get_video_ids(max=20):
     video_ids = []
     for playlist_url in playlists:
         playlist = Playlist(playlist_url)
         for video_url in playlist.video_urls:
-            q = parse_qs(urlparse(video_url).query)
-            vid = q.get("v", [None])[0]
+            vid = parse_qs(urlparse(video_url).query).get("v", [None])[0]
             if vid:
                 video_ids.append(vid)
+                if len(video_ids) >= max:
+                    return video_ids
     return video_ids
 
 def main():
     # playlists: list[str] of playlist URLs (must exist in your code)
     # phrase_groups: dict[str, list[str]] mapping label -> phrase variants (must exist in your code)
 
-    video_ids = ["byLVP7bEeRs","DWU9k5tVYSg", "-A-WwK1aVHs"]
+    # video_ids = ["byLVP7bEeRs","DWU9k5tVYSg", "-A-WwK1aVHs"]
+    video_ids = get_video_ids()
+    print(video_ids)
 
-    overall_results = {label: 0 for label in phrase_groups}
+    total_videos = len(video_ids)
+    if total_videos == 0:
+        print("No videos found.")
+        return
+
+    youtube_objects = []
+
+    videos_with_phrase = {label: 0 for label in phrase_groups}
 
     for video_id in video_ids:
-        words = youtube.get_transcript(video_id=video_id)
-
-        video_results = {}
+        yt_object = youtube.get_youtube_object(video_id)
+        youtube_objects.append(yt_object)
+        print(yt_object.title)
+        words = youtube.get_transcript(video_id)
 
         for label, variants in phrase_groups.items():
-            count = 0
+            found_in_this_video = False
+
             for variant in variants:
                 phrase_words = variant.lower().split()
-                count += count_phrase_in_words(words, phrase_words)
+                if count_phrase_in_words(words, phrase_words) > 0:
+                    found_in_this_video = True
+                    break  # stop once found
 
-            video_results[label] = count
-            overall_results[label] += count
+            if found_in_this_video:
+                videos_with_phrase[label] += 1
 
-        print(f"\nVideo: {video_id}")
-        for label, count in video_results.items():
-            print(f"{label}: {count}")
-
-    print("\n=== TOTAL ACROSS ALL VIDEOS ===")
-    for label, count in overall_results.items():
-        print(f"{label}: {count}")
+    print("\n=== PROBABILITY PHRASE APPEARS IN A VIDEO ===")
+    for label in phrase_groups:
+        probability = videos_with_phrase[label] / total_videos
+        print(f"{label}: {probability:.2%} ({videos_with_phrase[label]}/{total_videos})")
 
 
 if __name__ == "__main__":
