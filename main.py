@@ -1,60 +1,79 @@
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
-import base64
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-import requests
-import datetime
+from kalshi import kalshi
+import youtube
+import re
+from pytubefix import Playlist
+from urllib.parse import urlparse, parse_qs
+import string
 
-class kalshi:
-    def __init__(self, key_id = "f34865f7-b2ba-4235-ba21-df0bfdc727a3", key_file="private.key"):
-        self.key_id = key_id
-        self.private_key = self.load_private_key(key_file)
+phrase_groups = {
+    "ankle": ["ankle", "ankles"],
+    "double double": ["double double", "double-double", "double doubles", "double-doubles"],
+    "recruit": ["recruit", "recruits", "recruited", "recruiting"],
+    "all american": ["all american", "all-american", "all americans", "all-americans"],
+    "airball": ["airball", "air ball", "air-ball", "airballs", "air balls", "air-balls"],
+    "elbow": ["elbow", "elbows", "elbowed", "elbowing"],
+    "draft": ["draft", "drafts", "drafted", "drafting"],
+    "transfer": ["transfer", "transfers", "transferred", "transferring"],
+}
 
-    def load_private_key(self, file_path):
-        with open(file_path, "rb") as key_file:
-            private_key = serialization.load_pem_private_key(
-                key_file.read(),
-                password=None,  # or provide a password if your key is encrypted
-                backend=default_backend()
-            )
-        return private_key
-    
+playlists = ["https://www.youtube.com/playlist?list=PLSrXjFYZsRuPS6Fow6qsDfsR8SfUhicxU"]
+
+def count_phrase_in_words(words, phrase_words):
+    # Count occurrences of phrase_words as a contiguous sequence in words
+    n = len(phrase_words)
+    if n == 0:
+        return 0
+    if n == 1:
+        target = phrase_words[0]
+        return sum(1 for w in words if w == target)
+
+    total = 0
+    for i in range(len(words) - n + 1):
+        if words[i : i + n] == phrase_words:
+            total += 1
+    return total
+
+def get_video_ids():
+    video_ids = []
+    for playlist_url in playlists:
+        playlist = Playlist(playlist_url)
+        for video_url in playlist.video_urls:
+            q = parse_qs(urlparse(video_url).query)
+            vid = q.get("v", [None])[0]
+            if vid:
+                video_ids.append(vid)
+    return video_ids
+
+def main():
+    # playlists: list[str] of playlist URLs (must exist in your code)
+    # phrase_groups: dict[str, list[str]] mapping label -> phrase variants (must exist in your code)
+
+    video_ids = ["byLVP7bEeRs","DWU9k5tVYSg", "-A-WwK1aVHs"]
+
+    overall_results = {label: 0 for label in phrase_groups}
+
+    for video_id in video_ids:
+        words = youtube.get_transcript(video_id=video_id)
+
+        video_results = {}
+
+        for label, variants in phrase_groups.items():
+            count = 0
+            for variant in variants:
+                phrase_words = variant.lower().split()
+                count += count_phrase_in_words(words, phrase_words)
+
+            video_results[label] = count
+            overall_results[label] += count
+
+        print(f"\nVideo: {video_id}")
+        for label, count in video_results.items():
+            print(f"{label}: {count}")
+
+    print("\n=== TOTAL ACROSS ALL VIDEOS ===")
+    for label, count in overall_results.items():
+        print(f"{label}: {count}")
 
 
-    def sign(self, timestamp, method, path):
-        path_without_query = path.split('?')[0]
-
-        message = f"{timestamp}{method}{path_without_query}".encode('utf-8')
-
-        signature = self.private_key.sign(
-            message,
-            padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()),
-                salt_length=hashes.SHA256().digest_size,
-            ),
-            hashes.SHA256()
-        )
-        return base64.b64encode(signature).decode('utf-8')
-
-
-    def send(self, path, method = "GET", url_base = 'https://api.elections.kalshi.com'):
-        timestamp = str(int(datetime.datetime.now().timestamp() * 1000))
-        method = "GET"
-        signature = self.sign(timestamp, method, path)
-        headers = {
-            'KALSHI-ACCESS-KEY': self.key_id,
-            'KALSHI-ACCESS-SIGNATURE': signature,
-            'KALSHI-ACCESS-TIMESTAMP': timestamp
-        }
-        response = requests.get(url_base + path, headers=headers)
-        return response
-
-k = kalshi()
-
-balance_response = k.send(path = "/trade-api/v2/portfolio/balance").json()
-
-print(f"Your balance: ${balance_response['balance'] / 100:.2f}")
-
-
-
+if __name__ == "__main__":
+    main()
