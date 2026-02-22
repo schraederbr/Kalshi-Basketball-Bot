@@ -23,7 +23,14 @@ ytt_api = YouTubeTranscriptApi(
 
 def get_transcript(video_id="mDX_mF3vG7c"):
     # Get only auto-generated English transcript
-    transcript_list = ytt_api.list(video_id)
+    try:
+        transcript_list = ytt_api.list(video_id)
+    except Exception as e:
+        print(e)
+        print(f"{video_id} failed")
+        return
+
+    # print(get_youtube_object(video_id).title)
     transcript = transcript_list.find_generated_transcript(["en"])
     fetched = transcript.fetch()
     text = TextFormatter().format_transcript(fetched)
